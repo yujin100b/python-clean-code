@@ -1,0 +1,424 @@
+# 8장 단위 테스트
+
+- 단위 테스트는 소프트웨어 유지보수에 있어서 결정적인 역할
+- 핵심 개발 전략으로서의 자동화 테스트, 안전한 코드 수정, 점진적 기능 향상에 대해 알아보자.
+
+# 디자인 원칙과 단위 테스트
+- 단위 테스트란?
+  - 비즈니스 로직이 특정 조건을 보장하는지 확인하기 위해 여러 시나리오를 검증하는 코드
+  - 단위 테스트의 특징
+    - 격리: 외부 에이전트와 완전히 독립되어 비즈니스 로직에만 집중한다. 이전 상태에 관계없이 임의의 순서로 실행될 수 있어야 한다.
+    - 성능: 단위 테스트는 신속하게 실행되어야 한다. 반복적으로 여러 번 실행될 수 있어야 한다.
+    - 자체 검증: 단위 테스트의 실행만으로 결과를 결정할 수 있어야 한다. 단위 테스트를 처리하기 위한 추가 단게가 없어야 한다.
+  - 소프트웨어의 핵심이 되는 필수 기능으로, 일반 비즈니스 로직과 동일한 수준으로 다루어야 한다.
+## 자동화된 테스트의 다른 형태
+- 단위 테스트는 함수, 메서드와 같이 매우 작은 단위를 확인하기 위한 것이다. 클래스를 테스트하기 위해서는 단위 테스트의 집합인 test suite를 작성한다.
+- 단위 테스트는 여러 방법으로 할 수 있으며 모든 오류를 잡을 수 있는 것도 아니다.
+    - 통합 테스트: 한 번에 여러 컴포넌트가 종합적으로 잘 동작하는지 검증한다. 이 경우에는 부작용이나 격리를 고려하지 않는다.
+    - 인수 테스트: usecase를 활용해 사용자의 관점에서 시스템의 유효성을 검사하는 자동화된 테스트
+- 위 두 가지 테스트는 실행하는 데에 많은 시간이 걸리기 때문에 덜 자주 실행하게 된다.
+- 좋은 개발 환경을 구축했다면 개발자는 전체 테스트 스위트를 만들고 코드에 수정이 생길때마다 반복적으로 단위 테스트와 리팩토링을 할 수 있어야 한다.
+- 실용성이 이상보다 우선이다. 프로젝트의 상황에 알맞게 단위 테스트를 활용하자.
+## 단위 테스트와 애자일 소프트웨어 개발
+- 피드백을 빠르게 받을수록 더 쉽게 코드를 수정할 수 있으며, 변화에 효과적으로 대응하기 위해서는 유연하며 확장 가능해야 한다.
+- 하지만 코드 자체만으로는 변화에 유연하다는 보장을 하기 어렵다. 변경 후 기존 기능이 보존되었다는 것을 어떻게 알 수 있을까?
+- 단위 테스트는 코드가 정확하게 동작한다는 공식적인 증거가 될 수 있다.
+- 좋은 테스트를 가질수록 버그에 의해 프로젝트를 중단하지 않고 신속하게 가치를 제공할 가능성이 높아진다.
+## 단위 테스트와 소프트웨어 디자인
+- 테스트의 실용성은 단순히 있으면 좋은 것이 아니라 클린 코드의 핵심 가치이다.
+- 단위 테스트에는 특정 코드에 단위 테스트를 해야겠다고 발견하는 단계에서 더 나은 코드를 작성하는 단계, 그리고 모든 코드가 테스트에 의해 작성되는 단계까지 여러 단계가 있다.
+```
+# 테스트가 코드의 개선으로 이어지는 예시
+class MetricsClient:
+    """타사 지표 전송 클라이언트"""
+
+    def send(self, metric_name, metric_value):
+        if not isinstance(metric_name, str):
+            raise TypeError("metric_name으로 문자열 타입을 사용해야 함")
+        if not isinstance(metric_value, str):
+            raise TypeError("metric_value로 문자열 타입을 사용해야 함")
+
+        print(f"{metric_name} 전송 값 = {metric_value}")
+
+class Process:
+    def __init__(self):
+        self.client = MetricsClient()
+
+    def process_iterations(self, n_iterations):
+        for i in range(n_iterations):
+            result = self.run_process()
+            self.client.send("iteration.".format(i), result)
+```
+- 타사 지표 전송 클라이언트는 파라미터가 문자열 타입이어야 한다는 요구사항이 있다. 따라서 result가 문자열이 아닌 경우 전송에 실패한다.
+- 이러한 버그를 발견했으므로 단위 테스트를 통해 리팩토링을 여러번 하더라도 재현되지 않는다는 것을 증명할 수 있다.
+- Process 객체의 client를 mocking하여 테스트할수도 있지만, 더 많은 코드가 필요하다.
+- 필요한 부분만 테스트하기 위해 client를 래퍼 메서드에 위임하자.
+```
+class WrappedClient:
+    def __init__(self):
+        self.client = MetricsClient()
+
+    def send(self, metric_name, metric_value):
+        return self.client.send(str(metric_name), str(metric_value))
+
+class Process:
+    def __init__(self):
+        self.client = WrappedClient()
+
+    def process_iterations(self, n_iterations):
+        for i in range(n_iterations):
+            result = self.run_process()
+            self.client.send("iteration.".format(i), result)
+```
+- 메인 코드에 대해 직접 단위 테스트를 작성하면 추상화를 하지 못하게 된다.
+- 이제 메서드를 분리했으므로 실제 단위 테스트를 작성해보자.
+```
+import unittest
+from unittest.mock import Mock
+
+class TestWrappedClient(unittest.TestCase):
+    def test_send_converts_types(self):
+        wrapped_client = WrappedClient()
+        wrapped_client.client = Mock()
+        wrapped_client.send("value", 1)
+        wrapped_client.client.send.assert_called_with("value", "1")
+```
+## 테스트의 경계 정하기
+- 테스트의 범위는 우리가 작성한 코드의 범위로 한정해야 한다.
+- 외부 프로젝트에 대해서는 자체적인 테스트가 있다고 가정하자.
+- 외부 컴포넌트와의 결합력을 낮추고 의존성을 역전시켰다면, 단위 테스트를 작성할 때 이러한 인터페이스를 만드는 것이 훨씬 쉬워진다.
+- 직접 외부 라이브러리를 테스트하지 않더라도 제대로 호출되었는지는 확인해야 한다.
+
+# 테스트를 위한 프레임워크와 도구
+- 단위 테스트를 작성하기 위해 사용할 수 있는 많은 도구가 있지만, unittest와 pytest만 이용해도 거의 모든 시나리오를 다룰 수 있다.
+## 단위 테스트 프레임워크와 라이브러리
+- unittest: 파이썬의 표준 라이브러리
+- pytest: pip으로 설치 필요
+- unittest만으로도 테스트 시나리오를 다루기엔 충분하지만 의존성이 많은 경우 테스트 케이스를 파라미터화할 수 있는 픽스처라는 객체가 필요하다. 이 경우 pytest가 적합하다.
+- 머지 리퀘스트에 대해 코드 리뷰를 도와주는 간단한 버전 제어 도구의 예시로 둘을 비교해보자.
+    - 요구사항
+        - 한 명 이상의 사용자가 변경 내용에 동의하지 않은 경우 머지 리퀘스트 거절
+        - 아무도 반대하지 않은 상태에서 두 명 이상의 개발자가 동의하면 머지 리퀘스트 승인
+        - 이외 상태는 보류
+```
+from enum import Enum
+
+class MergeRequestStatus(Enum):
+    APPROVED = 'approved'
+    REJECTED = 'rejected'
+    PENDING = 'pending'
+
+class MergeRequest:
+    def __init__(self):
+        self._context = {
+            "upvotes": set(),
+            "downvotes": set(),
+        }
+
+    @property
+    def status(self):
+        if self._context['downvotes']:
+            return MergeRequestStatus.REJECTED
+        elif len(self._context['upvotes']) >= 2:
+            return MergeRequestStatus.APPROVED
+        return MergeRequestStatus.PENDING
+
+    def upvote(self, by_user):
+        self._context['downvotes'].discard(by_user)
+        self._context['upvotes'].add(by_user)
+
+    def downvote(self, by_user):
+        self._context['upvotes'].discard(by_user)
+        self._context['downvotes'].add(by_user)
+```
+## unittest
+- 자바의 JUnit 기반
+- 테스트가 객체를 이용해 작성되고 클래스 시나리오별로 테스트를 그룹화하는 것이 일반적
+- 단위 테스트를 만들려면?
+    - unittest.TestCase를 상속하여 테스트 클래스 정의
+    - 메서드에 테스트할 조건 정의
+    - 테스트는 test_로 시작해야 한다.
+    - 본문에서는 TestCase에서 상속받은 메서드를 사용하여 체크하려는 조건이 참인지 확인하면 된다.
+```
+import unittest
+
+class TestMergeRequestStatus(unittest.TestCase):
+    def test_simple_rejected(self):
+        merge_request = MergeRequest()
+        merge_request.downvote('maintainer')
+        self.assertEqual(merge_request.status, MergeRequestStatus.REJECTED)
+
+    def test_just_created_is_pending(self):
+        self.assertEqual(MergeRequest().status, MergeRequestStatus.PENDING)
+```
+- 위 예시와 같이 단위테스트 API는 비교를 위한 다양한 메서드를 제공하고, 가장 일반적인 메서드는 `assertEquals()`이다.
+    - 이 메서드는 message 인자를 이용해 에러가 발생한 경우 메세지를 지정할 수 있다.
+- 이외에도 `assertRaises()`를 이용해 특정 예외가 발생했는지 여부도 확인할 수 있다.
+- `assertRaisesRegex()`를 이용하면 발생한 예외의 메시지가 제공된 정규식과 일치하는지도 확인한다.
+
+## 테스트 파라미터화
+
+- 이터에 따라 머지 리퀘스트가 정상적으로 동작하는지, 즉 status 프로퍼티에서 종료 여부를 확인한 뒤의 코드를 테스트해보자.
+- 이것을 위해 가장 좋은 방법은 해당 컴포넌트를 다른 클래스로 분리하고 컴포지션을 사용해 다시 가져오는 것이다.
+- 분리된 클래스에 대해서는 자체 테스트 스위트를 가진 새로운 추상화 객체를 만들고 이것에 대해 테스트를 한다.
+```
+class AcceptanceThreshold:
+    def __init__(self, merge_request_context: dict) -> None:
+        self._context = merge_request_context
+
+    def status(self):
+        if self._context['downvotes']:
+            return MergeRequestStatus.REJECTED
+        elif len(self._context['upvotes']) >= 2:
+            return MergeRequestStatus.APPROVED
+        return MergeRequestStatus.PENDING
+```
+```
+class MergeRequest:
+    def __init__(self):
+        self._context = {
+            "upvotes": set(),
+            "downvotes": set(),
+        }
+        self._status = MergeRequestStatus.OPEN
+
+    def close(self):
+        self._status = MergeRequestStatus.CLOSED
+
+    def _cannot_vote_if_closed(self):
+        if self._status == MergeRequestStatus.CLOSED:
+            raise MergeRequestException("종료된 머지 리퀘스트에 투표할 수 없음")
+
+    @property
+    def status(self):
+        if self._status == MergeRequestStatus.CLOSED:
+            return self._status
+
+        return AcceptanceThreshold(self._context).status()
+
+    def upvote(self, by_user):
+        self._cannot_vote_if_closed()
+
+        self._context['downvotes'].discard(by_user)
+        self._context['upvotes'].add(by_user)
+
+    def downvote(self, by_user):
+        self._cannot_vote_if_closed()
+
+        self._context['upvotes'].discard(by_user)
+        self._context['downvotes'].add(by_user)
+```
+- 위와 같이 수정하고 테스트를 해도 테스트에 통과하는 것을 통해 리팩토링이 기능을 손상시키지 않았음을 확인할 수 있다.
+- 이를 확인했으므로 이제 새로운 클래스에 테스트를 작성해볼 수 있다.
+```
+class TestAcceptnaceThreshold(unittest.TestCase):
+    def setUp(self):
+        self.fixture_data = (
+            (
+                {'downvotes': set(), 'upvotes': set()},
+                MergeRequestStatus.PENDING
+            ),
+            (
+                {'downvotes': set(), 'upvotes': {'dev1'}},
+                MergeRequestStatus.PENDING
+            ),
+            (
+                {'downvotes': {'dev1'}, 'upvotes': set()},
+                MergeRequestStatus.REJECTED
+            ),
+            (
+                {'downvotes': set(), 'upvotes': {'dev1', 'dev2'}},
+                MergeRequestStatus.APPROVED
+            ),
+        )
+
+    def test_status_resolution(self):
+        for context, expected in self.fixture_data:
+            with self.subTest(context=context):
+                status = AcceptanceThreshold(context).status()
+                self.assertEqual(status, expected)
+```
+- 위와 같이 데이터 픽스처를 정의해 코드의 파라미터를 간결하게 전달하고, 결과를 확인할 수 있다.
+- subTest 헬퍼를 사용함으로써 테스트중 하나가 실패하면 어떤 변수가 실패했는지 알 수 있다
+
+## pytest
+- unittest처럼 테스트 시나리오를 클래스로 만들고 객체 지향 모델을 생성할 수 있지만 필수는 아님
+- assert구문만 사용해 조건을 검사할 수 있기 때문에 더 자유롭다.
+- pytest 명령어를 이용해 탐색 가능한 모든 테스트를 한번에 실행하며, unittest로 작성한 테스트도 실행한다.
+```
+### 기초적인 pytest 사용 예시
+
+# 이전의 테스트를 pytest로 다시 작성
+def test_simple_rejected():
+    merge_request = MergeRequest()
+    merge_request.downvote('maintainer')
+    assert merge_request.status == MergeRequestStatus.REJECTED
+
+def test_just_created_is_pending():
+    assert MergeRequest().status == MergeRequestStatus.PENDING
+
+# 예외의 발생 유무와 같은 검사는 pytest의 함수를 사용해야 한다.
+def test_invalid_types():
+    merge_request = MergeRequest()
+    pytest.raises(TypeError, merge_request.upvote, {'invalid-object'})
+
+def test_cannot_vote_on_closed_merge_request():
+    merge_request = MergeRequest()
+    merge_request.close()
+    pytest.raises(MergeRequestException, merge_request.upvote, 'dev1')
+    with pytest.raises(
+        MergeRequestException,
+        match='종료된 머지 리퀘스트에 투표할 수 없음',
+    ):
+        merge_request.downvote('dev1')
+```
+- `pytest.raises`는 `unittest.TestCase.assertRaises`와 동일하며 메서드 또는 컨텍스트 관리자 형태로 호출할 수 있다.
+- 예외 메세지를 검사하고 싶으면 match 파라미터에 확인하려는 표현식을 전달할 수 있다.
+
+### 테스트 파라미터화
+
+- pytest는 테스트 조합마다 새로운 테스트를 생성하기 때문에 파라미터화된 테스트를 더 깔끔하게 할 수 있다.
+- 테스트 파라미터화를 위해 `pytest.mark.parametrize` 데코레이터를 사용해야 한다.
+- 데코레이터의 첫번째 파라미터는 테스트 함수에 전달할 파라미터의 이름이고, 두번째 파라미터는 파라미터에 대한 각 값으로 반복 가능해야 한다.
+```
+import pytest
+@pytest.mark.parametrize("context, expected_status", (
+        (
+            {'downvotes': set(), 'upvotes': set()},
+            MergeRequestStatus.PENDING
+        ),
+        (
+            {'downvotes': set(), 'upvotes': {'dev1'}},
+            MergeRequestStatus.PENDING
+        ),
+        (
+            {'downvotes': {'dev1'}, 'upvotes': set()},
+            MergeRequestStatus.REJECTED
+        ),
+        (
+            {'downvotes': set(), 'upvotes': {'dev1', 'dev2'}},
+            MergeRequestStatus.APPROVED
+        ),
+))
+def test_acceptance_threshold_status_resolution(context, expected_status):
+    assert AcceptanceThreshold(context).status() == expected_status
+```
+- 테스트 데이터를 파라미터화해서 테스트 함수 본문에서는 for 루프와 컨텍스트 관리자가 제거되었다.
+- 각 테스트 케이스의 데이터가 함수 본문에서 분리되어 확장과 유지보수에 유리한 구조라고도 할 수 있다.
+
+### 픽스처
+
+pytest의 가장 큰 장점 중 하나는 재사용 가능한 기능을 쉽게 만들 수 있다는 점이다.
+이렇게 생성한 데이터나 객체를 재사용해 보다 효율적으로 테스트를 할 수 있다.
+예를 들어, 특정 상태를 가진 `MergeRequest` 객체를 만들고 여러 테스트에서 이 객체를 재사용할 수 있다.
+```
+@pytest.fixture
+def rejected_mr():
+    merge_request = MergeRequest()
+    merge_request.downvote('dev1')
+    merge_request.upvote('dev2')
+    merge_request.upvote('dev3')
+    merge_request.downvote('dev4')
+
+    return merge_request
+
+def test_simple_rejected(rejected_mr):
+    assert rejected_mr.status == MergeRequestStatus.REJECTED
+
+def test_rejected_with_approvals(rejected_mr):
+    rejected_mr.upvote('dev2')
+    rejected_mr.upvote('dev3')
+    assert rejected_mr.status == MergeRequestStatus.REJECTED
+```
+- 테스트는 메인 코드에도 영향을 미치므로 클린 코드의 원칙이 테스트에도 적용된다는 것을 기억해야 한다.
+- pytest의 픽스처 기능을 이용하면 DRY 원칙(중복코드ㄴㄴ 원칙)을 준수할 수 있다.
+- 픽스처는 테스트 전반에 걸쳐 사용될 객체를 생성하거나 데이터를 노출하는 것 이외에도, 직접 호출되지 않는 함수를 수정하거나 사용될 객체를 미리 설정하는 등 사전조건 설정에 사용할 수도 있다.
+- fixture 대신 전역변수를 사용하고 싶다는 생각이 들 때도 있지만, fixture는 전역변수와는 엄연히 다르다. fixture는 일반적인 데이터(변수)처럼 생겼지만 함수로써 작동한다. 즉 테스트마다 실행되는 함수라고 생각하면 된다.
+- 테스트마다 실행되는 것이 싫다면 fixture 생성 시 scope 인자를 넘겨줄 수도 있다.
+
+## 코드 커버리지
+- 테스트 러너에서 사용하는 커버리지 플러그인은 테스트에서 어떤 부분을 다뤄야 할지, 어떤 부분이 개선되었는지 알 수 있게 해준다.
+### 코드 커버리지 도구 설정
+
+pytest의 경우 pytest-cov 패키지를 설치하고, 테스트를 실행할 때 pytest 러너에게 사용할 커버리지 옵션을 인자로 넘겨줘야 한다.
+가장 권장되는 기능은 테스트되지 않은 행을 알려주는 기능이다.
+```
+pytest \\
+    --cov-report term-missing \\
+    --cov=coverage_1
+    test_coverage_1.py
+```
+- 위와 같이 수행하면 코드의 어떤 부분에 대해 단위 테스트를 하지 않았는지 알 수 있다.
+- 이렇게 커버하지 못한 부분을 발견하고 작은 메서드를 만들어 리팩토링하는 것이 일반적인 시나리오다.
+- 하지만 높은 커버리지가 올바르게 작성된 코드를 의미하는 것은 아니다.
+
+### 코드 커버리지 사용 시 주의사항
+ 커버리지 도구는 인터프리트되는 라인을 식별해 커버리지를 측정하고, 라인이 인터프리트되었다고 해서 테스트되었다는 것을 의미하진 않기 때문에 최종 커버리지 보고서를 해석할 때 주의해야 한다.
+
+## 모의(mock) 객체
+- 단위 테스트는 외부 서비스를 테스트할 의무가 없기 때문에, mock 객체로 대체해 이것들이 호출되는지까지만 확인할 수 있다.
+- 모의 객체는 유용하지만 남용하여 안티패턴을 만들지 않도록 주의하자.
+
+### 패치와 모의에 대한 주의사항
+
+- 테스트 케이스를 작성하기 위해 다양한 몽키 패치 또는 모의를 해야 한다면 코드에서 나쁜 냄새가 나는 신호이다!
+- 객체를 패치하는 작업은 런타임 중 코드가 바뀌어 테스트가 어려워지며, 런타임 시 인터프리터에서 객체를 수정하는 오버헤드로 인해 성능상의 이슈도 있다.
+### Mock 객체 사용하기
+
+- 테스트 더블은 테스트 스위트에서 실제 코드를 대신해 실제인 것처럼 동작하는 코드를 말한다.
+- 테스트 더블에는 다양한 타입의 객체가 있지만 모의 객체가 가장 일반적이고 범용적이다.
+- mock은 스펙을 따르는 객체 타입으로 응답 값을 수정할 수 있다. 즉 모의 객체 호출 시 응답해야 하는 값이나 행동을 특정할 수 있다.
+- Mock 객체는 파라미터나 호출 횟수 등을 기록해 나중에 애플리케이션의 동작을 검증할 수 있도록 한다.
+- Mock 객체의 종류
+    - Mock: 모든 값을 반환하도록 설정할 수 있는 테스트 더블, 모든 호출을 추적한다.
+    - MagicMock: Mock과 같으면서 매직 메서드를 지원한다. 즉 mocking하려는 객체에서 매직 메서드를 사용한 경우에는 MagicMock 객체를 사용해야 한다.
+- 테스트 더블의 사용 예
+    - 애플리케이션에 머지 리퀘스트의 빌드 상태를 알리는 컴포넌트를 추가해보자.
+    - 빌드가 끝나면 머지 리퀘스트 아이디와 빌드 상태를 파라미터로 하여 객체를 호출한다.
+    - 그 후 특정 엔드포인트에 POST 요청을 보내 최종 머지 리퀘스트의 상태를 업데이트한다.
+```
+from datetime import datetime
+import requests
+from contants import STATUS_ENDPOINT
+
+class BuildStatus:
+    """CI 도구에서의 머지 리퀘스트 상태"""
+
+    @staticmethod
+    def build_date() -> str:
+        return datetime.utcnow().isoformat()
+
+    @classmethod
+    def notify(cls, merge_request_id, status):
+        build_status = {
+            'id': merge_request_id,
+            'status': status,
+            'built_at': cls.build_date()
+        }
+        response = requests.post(STATUS_ENDPOINT, json=build_status)
+        response.raise_for_status() # 200이 아닌 경우 예외 발생
+        return response
+```
+- 위 클래스는 많은 부작용을 가지고 있지만, 외부 모듈에 의존성이 너무 크다.
+- 지금은 API에 정보가 적절히 전달되는지만 테스트하면 된다.
+- 또한 API에 전달되는 값 중 시간 값은 계속해서 변하기 때문에 맞는 값인지 확인하기 어렵다.
+```
+from unittest import mock
+from contants import STATUS_ENDPOINT
+from mock_2 import BuildStatus
+
+@mock.patch('mock_2.requests')
+def test_build_notification_sent(mock_requests):
+    build_date = '2019-01-01T00:00:01'
+    with mock.patch('mock_2.BuildStatus.build_date', return_value=build_date):
+        BuildStatus.notify(123, 'OK')
+
+    expected_payload = {'id': 123, 'status': 'OK', 'built_at': build_date}
+    mock_requests.post.assert_called_with(
+        STATUS_ENDPOINT, json=expected_payload
+    )
+```
+- 먼저 @mock.patch 데코레이터를 이용해 테스트 안에서 mock_2.request를 호출하면 mock_requests라는 mock 객체가 대신할 것이라고 알려준다.
+- 컨텍스트 매니저로 사용된 mock.patch에서는 build_date() 호출 시 어설션에 사용할 날짜를 반환하도록 패치한다.
+- 이렇게 mock 객체를 이용하면 단위테스트에서 외부 요청에 의존할 필요가 없어지고, API 호출 성공 여부와 파라미터의 유효성까지 확인할 수 있다.
+- 테스트의 몇 퍼센트까지만 mocking해야 하는지 정해진 것은 없지만, 계속해서 특정 부분을 패치해야 한다면 추상화가 잘못된 것이다.
